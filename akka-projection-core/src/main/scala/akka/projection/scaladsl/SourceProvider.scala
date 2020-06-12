@@ -16,6 +16,8 @@ trait SourceProvider[Offset, Envelope] {
 
   def extractOffset(envelope: Envelope): Offset
 
+  def extractCreationTime(envelope: Envelope): Option[Long]
+
   def verifyOffset(offset: Offset): OffsetVerification = VerificationSuccess
 
   def isOffsetMergeable: Boolean = false

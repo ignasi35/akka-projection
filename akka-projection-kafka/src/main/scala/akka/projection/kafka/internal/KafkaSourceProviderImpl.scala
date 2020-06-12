@@ -23,6 +23,7 @@ import akka.stream.scaladsl.Keep
 import akka.stream.scaladsl.Source
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.record.TimestampType
 
 /**
  * INTERNAL API
@@ -76,6 +77,13 @@ import org.apache.kafka.common.TopicPartition
 
   override def extractOffset(record: ConsumerRecord[K, V]): GroupOffsets = GroupOffsets(record)
 
+  override def extractCreationTime(record: ConsumerRecord[K, V]): Option[Long] = {
+    if (record.timestampType() == TimestampType.CREATE_TIME)
+      Some(record.timestamp())
+    else
+      None
+  }
+
   override def verifyOffset(offsets: GroupOffsets): OffsetVerification = {
     if (offsets.partitions.forall(assignedPartitions.contains))
       VerificationSuccess
@@ -116,4 +124,5 @@ import org.apache.kafka.common.TopicPartition
     override def onStop(currentTps: Set[TopicPartition], consumer: RestrictedConsumer): Unit =
       assignedPartitions = EmptyTps
   }
+
 }
