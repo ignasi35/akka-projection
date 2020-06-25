@@ -13,6 +13,7 @@ import akka.actor.typed.Extension
 import akka.actor.typed.ExtensionId
 import akka.projection.ProjectionId
 import akka.projection.Telemetry
+import akka.projection.internal.metrics.tools.InternalProjectionStateMetricsSpec.Envelope
 
 /**
  *
@@ -32,12 +33,25 @@ class InMemTelemetry(projectionId: ProjectionId, system: ActorSystem[_]) extends
   override def stopped(): Unit =
     stoppedInvocations.incrementAndGet()
 
-  override def beforeProcess(): AnyRef = ExternalContext()
+  override def beforeProcess[E](envelope: E): AnyRef = ExternalContext()
 
   override def afterProcess(externalContext: AnyRef): Unit = {
     afterProcessInvocations.incrementAndGet()
     val readyTimestampNanos = externalContext.asInstanceOf[ExternalContext].readyTimestampNanos
     lastServiceTimeInNanos.set(System.nanoTime() - readyTimestampNanos)
+  }
+
+  val threadLocalVal = new ThreadLocal[Long]()
+
+  override def beforeProcessScheduled[E](envelope: E): AnyRef = {
+    threadLocalVal.set(envelope.asInstanceOf[Envelope].offset)
+    threadLocalVal
+  }
+
+  override def afterProcessScheduled(threadLocalContext: AnyRef): Unit = {
+    val tlContext = threadLocalContext.asInstanceOf[ThreadLocal[Long]]
+    if (tlContext != threadLocalVal || tlContext.get != threadLocalVal.get)
+      throw new IllegalArgumentException("Expected the `threadLocalContext` produced by `beforeProcessScheduled`.")
   }
 
   override def onOffsetStored(numberOfEnvelopes: Int): Unit = {

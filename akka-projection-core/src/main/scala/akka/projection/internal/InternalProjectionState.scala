@@ -137,13 +137,16 @@ private[akka] abstract class InternalProjectionState[Offset, Envelope](
 
           Flow[ProjectionContextImpl[Offset, Envelope]].mapAsync(parallelism = 1) { context =>
             val measured: () => Future[Done] = { () =>
-              handler.process(context.envelope).map { done =>
+              val threadLocalContext = telemetry.beforeProcessScheduled(context.envelope)
+              val callback = handler.process(context.envelope).map { done =>
                 // `telemetry.afterProcess` is invoked immediately after `handler.process`
                 // even when retrying. Note that an error in handler.process must not
                 // invoke `afterProcess` (independently of the recovery strategy).
                 telemetry.afterProcess(context.externalContext)
                 done
               }
+              telemetry.afterProcessScheduled(threadLocalContext)
+              callback
             }
             handlerRecovery
               .applyRecovery(context.envelope, context.offset, context.offset, abort.future, measured)
@@ -386,7 +389,7 @@ private[akka] abstract class InternalProjectionState[Offset, Envelope](
             })
         .via(killSwitch.flow)
         .map { env =>
-          val externalContext = telemetry.beforeProcess()
+          val externalContext = telemetry.beforeProcess(env)
           ProjectionContextImpl(sourceProvider.extractOffset(env), env, externalContext)
         }
         .filter { context =>

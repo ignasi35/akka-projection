@@ -36,10 +36,13 @@ trait Telemetry {
   def failed(cause: Throwable): Unit
 
   /**
-   * TODO:
-   * @return
+   * Invoked as soon as the envelope is read, deserialised and ready to be processed.
+   *
+   * @param envelope the envelope that's ready for processing.  The type [[Envelope]] will always
+   *                 represent a single item as stored in the event log.
+   * @return an externally-provided context that will propagate with the envelope until [[afterProcess()]]
    */
-  def beforeProcess(): AnyRef
+  def beforeProcess[Envelope](envelope: Envelope): AnyRef
 
   /**
    * Invoked after processing an event such that it is visible by the read-side threads (data is
@@ -49,6 +52,27 @@ trait Telemetry {
    * @param externalContext the context produced by [[beforeProcess()]] and attached to the processed envelope.
    */
   def afterProcess(externalContext: AnyRef): Unit
+
+  /**
+   * A variant of [[beforeProcess()]] invoked immediately before invoking `handler.process`.  This
+   * method and its counterpart [[afterProcessScheduled()]] must be invoked on the same thread to prevent
+   * resources leaking.
+   *
+   * @param envelope the envelope that's about to be processed.
+   * @tparam Envelope the type of the envelope we're processing.  Note this type may
+   *                  be an `immutable.Seq[T]` when using [[akka.projection.internal.GroupedHandlerStrategy]].
+   * @return
+   */
+  def beforeProcessScheduled[Envelope](envelope: Envelope): AnyRef
+
+  /**
+   * Invoked immediately after invoking `handler.process`. This is the counterpart to [[beforeProcessScheduled()]]
+   * and may run before `handler.process` completes (or even before it starts).  This method and  [[beforeProcessScheduled()]]
+   * must be invoked on the same thread to prevent resources leaking.
+   *
+   * @param threadLocalContext the context produced by [[beforeProcessScheduled()]] for the same envelope.
+   */
+  def afterProcessScheduled(threadLocalContext: AnyRef): Unit
 
   /**
    * Invoked when the offset is committed.
@@ -99,9 +123,13 @@ trait Telemetry {
 
   override def stopped(): Unit = {}
 
-  override def beforeProcess(): AnyRef = Unit
+  override def beforeProcess[Envelope](envelope: Envelope): AnyRef = Unit
 
   override def afterProcess(externalContext: AnyRef): Unit = {}
+
+  override def beforeProcessScheduled[Envelope](envelope: Envelope): AnyRef = Unit
+
+  override def afterProcessScheduled(threadLocalContext: AnyRef): Unit = {}
 
   override def onOffsetStored(numberOfEnvelopes: Int): Unit = {}
 
